@@ -1240,7 +1240,7 @@ checkend: {
 
 		markloc = out - (char *)stackblock();
 		for (p = eofmark; STPUTC(c, out), *p; p++) {
-			if (c != *p)
+			if (c != (signed char)*p)
 				goto more_heredoc;
 
 			c = pgetc();
