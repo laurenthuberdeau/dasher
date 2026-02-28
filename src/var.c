@@ -176,13 +176,16 @@ initvar(void)
 	do {
 		vpp = hashvar(vp->text);
 		vp->next = *vpp;
+		vp->value = strchrnul(vp->text, '=') + 1;
 		*vpp = vp;
 	} while (++vp < end);
 	/*
 	 * PS1 depends on uid
 	 */
-	if (!geteuid())
+	if (!geteuid()) {
 		vps1.text = "PS1=# ";
+		vps1.value = vps1.text + 4;
+	}
 }
 
 /*
@@ -231,9 +234,14 @@ intmax_t setvarint(const char *name, intmax_t val, int flags)
 {
 	int len = max_int_length(sizeof(val));
 	char buf[len];
+	struct var *vp;
 
 	fmtstr(buf, len, "%" PRIdMAX, val);
-	setvar(name, buf, flags);
+	vp = setvar(name, buf, flags);
+	if (vp) {
+		vp->ival = val;
+		vp->flags |= VINT;
+	}
 	return val;
 }
 
@@ -271,7 +279,7 @@ struct var *setvareq(char *s, int flags)
 			ckfree(vp->text);
 
 		if ((flags & (VEXPORT|VREADONLY|VSTRFIXED|VUNSET)) != VUNSET)
-			bits = ~(VTEXTFIXED|VSTACK|VNOSAVE|VUNSET);
+			bits = ~(VTEXTFIXED|VSTACK|VNOSAVE|VUNSET|VINT);
 		else if ((vp->flags & VSTRFIXED))
 			bits = VSTRFIXED;
 		else {
@@ -296,6 +304,7 @@ out_free:
 	if (!(flags & (VTEXTFIXED|VSTACK|VNOSAVE)))
 		s = savestr(s);
 	vp->text = s;
+	vp->value = strchrnul(s, '=') + 1;
 	vp->flags = flags;
 
 	if (vp->func && (flags & VNOFUNC) == 0)
@@ -320,14 +329,31 @@ lookupvar(const char *name)
 			fmtstr(linenovar+7, sizeof(linenovar)-7, "%d", lineno);
 		}
 #endif
-		return strchrnul(v->text, '=') + 1;
+		return (char *)v->value;
 	}
 	return NULL;
 }
 
 intmax_t lookupvarint(const char *name)
 {
-	return atomax(lookupvar(name) ?: nullstr, 0);
+	struct var *v;
+	intmax_t result;
+
+	v = *findvar(name);
+	if (!v || (v->flags & VUNSET))
+		return 0;
+#ifdef WITH_LINENO
+	if (v == &vlineno && v->text == linenovar) {
+		fmtstr(linenovar+7, sizeof(linenovar)-7, "%d", lineno);
+		return atomax(v->value, 0);
+	}
+#endif
+	if (v->flags & VINT)
+		return v->ival;
+	result = atomax(v->value, 0);
+	v->ival = result;
+	v->flags |= VINT;
+	return result;
 }
 
 
@@ -533,8 +559,9 @@ poplocalvars(void)
 		} else {
 			if ((vp->flags & (VTEXTFIXED|VSTACK)) == 0)
 				ckfree(vp->text);
-			vp->flags = lvp->flags;
+			vp->flags = lvp->flags & ~VINT;
 			vp->text = lvp->text;
+			vp->value = strchrnul(lvp->text, '=') + 1;
 			if (vp->func && !(vp->flags & VNOFUNC))
 				(*vp->func)(varnull(vp->text));
 		}

@@ -50,6 +50,7 @@
 #define VNOFUNC		0x40	/* don't call the callback function */
 /* #define VNOSET	0x80	   do not set variable - just readonly test */
 #define VNOSAVE		0x100	/* when text is on the heap before setvareq */
+#define VINT		0x200	/* ival contains a valid cached integer value */
 
 
 struct var {
@@ -59,6 +60,8 @@ struct var {
 	void (*func)(const char *);
 					/* function to be called when  */
 					/* the variable gets set/unset */
+	const char *value;		/* cached pointer to value part of text */
+	intmax_t ival;			/* cached integer value (valid if VINT set) */
 };
 
 
@@ -180,5 +183,3 @@ static inline char *bltinlookup(const char *name)
 {
 	return lookupvar(name);
 }
-
-
